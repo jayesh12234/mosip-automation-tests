@@ -123,6 +123,7 @@ public class CommandsService {
 				}
 			}
 			fr.close();
+
 			if (failedAPIs.isEmpty())
 				retJson.put("status", true);
 			else {
