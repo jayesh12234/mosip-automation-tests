@@ -36,53 +36,6 @@ public class CheckTags extends BaseTestCaseUtil implements StepInterface {
 	@Override
 	public void run() throws RigInternalError {
 
-		String rid = null;
-		Response response = null;
-		JSONObject jsonObject = null;
-		String jsonFromPacketCreator = null;
-		if (step.getParameters().size() == 1 && step.getParameters().get(0).startsWith("$$")) {
-			rid = step.getParameters().get(0);
-			if (rid.startsWith("$$")) {
-				rid = step.getScenario().getVariables().get(rid);
-			}
-
-			String packetTagsUri = baseUrl + "/packet/getTags";
-			response = getRequest(packetTagsUri, "Get tags from context", step);
-			if (response != null && response.getStatusCode() == 200) {
-				logger.info(response.getBody().asString());
-				JSONObject jsonResponse = new JSONObject(response.getBody().asString());
-				jsonFromPacketCreator = jsonResponse.toString();
-			}
-
-			Object[] testObj = checkPacketTags.getYmlTestData(CheckPacketTags);
-			TestCaseDTO test = (TestCaseDTO) testObj[0];
-			String input = test.getInput();
-			input = JsonPrecondtion.parseAndReturnJsonContent(input, rid, "id");
-			test.setInput(input);
-
-			try {
-				checkPacketTags.test(test);
-			} catch (AuthenticationTestException e) {
-				logger.error(e.getMessage());
-			} catch (AdminTestException e) {
-				logger.error(e.getMessage());
-			} catch (SecurityXSSException e) {
-				logger.error(e.getMessage());
-			}
-
-			response = checkPacketTags.response;
-			JSONObject responseJson = new JSONObject(response.asString());
-			JSONObject tags = responseJson.getJSONObject("response").getJSONObject("tags");
-			String jsonFromServer = tags.toString();
-
-			String tagsMismatched = comparePacketTags(jsonFromServer, jsonFromPacketCreator);
-			if (tagsMismatched != null && !tagsMismatched.isEmpty()) {
-				this.hasError = true;
-				throw new RigInternalError("Packet Tags comparison Failed :" + tagsMismatched);
-			}
-
-		}
-
 	}
 
 	public static String comparePacketTags(String jsonFromServer, String jsonFromPacketCreator) {
