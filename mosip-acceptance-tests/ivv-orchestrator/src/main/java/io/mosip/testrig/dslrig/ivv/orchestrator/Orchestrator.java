@@ -182,9 +182,37 @@ public class Orchestrator {
 		BaseTestCaseUtil.exectionEndTime = System.currentTimeMillis();
 		logger.info("Suite end time is: " + BaseTestCaseUtil.exectionEndTime);
 		DslStepTimingCollector.logReport();
-		extent.flush();
 		if (dslConfigManager.IsDebugEnabled()) {
 			logger.info("Debug mode enabled; suite teardown limited to timing report and extent flush");
+		} else {
+			purgeAllPacketCreatorData();
+		}
+		extent.flush();
+	}
+
+	/**
+	 * Purges leftover packet-creator temp data once the whole suite has finished: the work-dir
+	 * packet .zip/.json/dirs, orphaned residents_/packets_/preregIds_/docs_ scratch dirs, and the
+	 * PVC-backed mounted temp dir (mountPath+mosip.test.temp, e.g. mountvolume/packets/) that every
+	 * context leaves schema/invalidIds/unenc-zip copies in. None of these are cleaned up mid-run, so
+	 * without this they accumulate across DSL runs — the work-dir side fills the pod's ephemeral
+	 * storage and restarts the container; the mounted-volume side fills the PVC over time instead.
+	 */
+	private void purgeAllPacketCreatorData() {
+		String url = BaseTestCaseUtil.baseUrl + BaseTestCaseUtil.props.getProperty("purgeAllPacketData");
+		try {
+			io.restassured.response.Response response = io.restassured.RestAssured.given().relaxedHTTPSValidation()
+					.queryParam("mountPath", ConfigManager.getproperty("mountPath"))
+					.queryParam("tempPath", ConfigManager.getproperty("mosip.test.temp"))
+					.when().delete(url).then().extract().response();
+			if (response != null && response.getStatusCode() == 200) {
+				logger.info("Purged all packet-creator temp data after suite: " + response.getBody().asString());
+			} else {
+				logger.warn("Failed to purge packet-creator temp data after suite. Status: "
+						+ (response != null ? response.getStatusCode() : "no response"));
+			}
+		} catch (Exception e) {
+			logger.warn("Failed to purge packet-creator temp data after suite: " + e.getMessage());
 		}
 	}
 

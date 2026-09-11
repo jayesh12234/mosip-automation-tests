@@ -228,6 +228,37 @@ public class PacketMakerService {
 
 	}
 
+	/**
+	 * Deletes leftover packet artifacts (temp packet dirs, final .zip/.json siblings) from the
+	 * shared work directory. createContainer()/packContainer() never clean these up themselves,
+	 * so without this they accumulate for the lifetime of the process. Schema cache files
+	 * ("v{version}.json", written by SchemaUtil.getAndSaveSchema) are left alone since they're
+	 * still valid for reuse within this run.
+	 */
+	public void purgeWorkDirectory() {
+		if (workDirectory == null) {
+			return;
+		}
+		File[] entries = new File(workDirectory).listFiles();
+		if (entries == null) {
+			return;
+		}
+		for (File entry : entries) {
+			if (entry.getName().matches("v\\d+(\\.\\d+)?\\.json")) {
+				continue;
+			}
+			try {
+				if (entry.isDirectory()) {
+					FileSystemUtils.deleteRecursively(entry.toPath());
+				} else {
+					Files.deleteIfExists(entry.toPath());
+				}
+			} catch (IOException e) {
+				logger.warn("Failed to delete leftover packet artifact {}", entry.getAbsolutePath(), e);
+			}
+		}
+	}
+
 	public String getNewRegId() {
 		PacketThreadContext ctx = PACKET_THREAD_CONTEXT.get();
 		if (ctx != null && ctx.regId != null) {

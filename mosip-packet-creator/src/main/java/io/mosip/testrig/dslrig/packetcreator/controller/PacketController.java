@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -375,5 +376,33 @@ public class PacketController {
         }
 
     }
+
+	@Operation(summary = "Purge all packet-creator scratch/temp data",
+			description = "Context-independent global cleanup: purges the shared packet work directory (leftover "
+					+ "packet .zip/.json/dirs), any orphaned residents_/packets_/preregIds_/docs_ scratch dirs in the "
+					+ "OS temp root, and — when mountPath/tempPath are supplied — the PVC-backed mounted temp dir "
+					+ "(e.g. mountvolume/packets/) that every context leaves schema/invalidIds/unenc-zip copies in. "
+					+ "Intended to be called once, automatically, after the whole DSL suite finishes — not per scenario.")
+	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "Purged all packet-creator temp data") })
+	@DeleteMapping(value = "/workDir/purgeAll")
+	public @ResponseBody String purgeAllPacketData(
+			@RequestParam(name = "mountPath", required = false) String mountPath,
+			@RequestParam(name = "tempPath", required = false) String tempPath) {
+		try {
+			packetMakerService.purgeWorkDirectory();
+			ContextUtils.purgeOrphanScratchDirs();
+			ContextUtils.purgeMountedTempDir(mountPath, tempPath);
+			return "Deleted all packet data successfully";
+		} catch (ServiceException se) {
+			throw se;
+		} catch (Exception e) {
+			logger.error("purgeAllPacketData", e);
+			throw new ServiceException(
+					HttpStatus.INTERNAL_SERVER_ERROR,
+					"PURGE_ALL_PACKET_DATA_FAIL",
+					e.getMessage()
+			);
+		}
+	}
 
 }

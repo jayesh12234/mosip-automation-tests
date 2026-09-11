@@ -127,6 +127,70 @@ public class ContextUtils {
 	    return "Deleted all packet data successfully";
 	}
 
+	/**
+	 * Purges the shared mounted temp directory (mountPath + mosip.test.temp, e.g. the PVC-backed
+	 * "mountvolume/packets/" root). Every context writes its schema/invalidIds/unenc-zip copies
+	 * here (PacketMakerService.createPacket/packPacket/packContainer) under its own contextKey
+	 * subfolder, but nothing ever deletes those subfolders — they accumulate across every run
+	 * this instance has ever served, independent of the (already-fixed) OS-temp workDirectory
+	 * leak. mountPath/tempPath are environment-level constants (same for every context in a
+	 * deployment, supplied by the caller), not context-specific, so this doesn't need a contextKey.
+	 * Refuses to touch a suspiciously shallow/root path so a missing tempPath can't wipe mountPath itself.
+	 */
+	public static void purgeMountedTempDir(String mountPath, String tempPath) throws IOException {
+	    if (mountPath == null || mountPath.isBlank() || tempPath == null || tempPath.isBlank()) {
+	        return;
+	    }
+	    Path resolved = Paths.get(mountPath + tempPath).toAbsolutePath().normalize();
+	    if (resolved.getNameCount() < 2 || resolved.equals(resolved.getRoot())) {
+	        logger.warn("Refusing to purge suspiciously shallow mounted temp path: {}", resolved);
+	        return;
+	    }
+	    File[] entries = resolved.toFile().listFiles();
+	    if (entries == null) {
+	        return;
+	    }
+	    for (File entry : entries) {
+	        try {
+	            if (entry.isDirectory()) {
+	                org.springframework.util.FileSystemUtils.deleteRecursively(entry.toPath());
+	            } else {
+	                java.nio.file.Files.deleteIfExists(entry.toPath());
+	            }
+	        } catch (IOException e) {
+	            logger.warn("Failed to delete leftover mounted temp entry {}", entry.getAbsolutePath(), e);
+	        }
+	    }
+	}
+
+	/**
+	 * Context-independent sweep of the OS temp root for scratch dirs created by
+	 * PacketSyncService (residents_/packets_/preregIds_/docs_ prefixes via Files.createTempDirectory).
+	 * clearPacketGenFolders() only reaches these via VariableManager tracking for a live context, so
+	 * any context that was already reset (or never explicitly cleaned) leaves them behind. Intended
+	 * for a single end-of-suite sweep, not per-scenario use.
+	 */
+	public static void purgeOrphanScratchDirs() throws IOException {
+	    String[] prefixes = { "residents_", "packets_", "preregIds_", "docs_" };
+	    File tmpRoot = new File(System.getProperty("java.io.tmpdir"));
+	    File[] entries = tmpRoot.listFiles();
+	    if (entries == null) {
+	        return;
+	    }
+	    for (File entry : entries) {
+	        if (!entry.isDirectory()) {
+	            continue;
+	        }
+	        String name = entry.getName();
+	        for (String prefix : prefixes) {
+	            if (name.startsWith(prefix)) {
+	                CommonUtil.deleteOldTempDir(entry.getAbsolutePath());
+	                break;
+	            }
+	        }
+	    }
+	}
+
 	private static void deleteCommaSeparatedPaths(String ctxName, String key) throws IOException {
 	    Object valueObj = VariableManager.getVariableValue(ctxName, key);
 	    if (valueObj != null) {
